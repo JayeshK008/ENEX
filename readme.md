@@ -49,10 +49,14 @@ The `train.py` script trains the NER model with endogenous augmentation. You can
 
 #### Command
 ```bash
-python train.py --sample_size 100 --alpha 0.01 --max_epochs 500 --patience 8```
-Arguments
-Argument	Type	Default	Description
---sample_size	int	100	Number of samples to use for training
---alpha	float	0.01	Alpha value for regularization
---max_epochs	int	500	Maximum number of epochs to train
---patience	int	8	Patience for early stopping
+python train.py --sample_size 100 --alpha 0.01 --max_epochs 500 --patience 8
+```
+## Arguments
+
+| Argument       | Type  | Default | Description                              |
+|---------------|------|---------|------------------------------------------|
+| `--sample_size` | int  | 100     | Number of samples to use for training  |
+| `--alpha`      | float | 0.01    | Alpha value for regularization         |
+| `--max_epochs` | int  | 500     | Maximum number of epochs to train      |
+| `--patience`   | int  | 8       | Patience for early stopping            |
+
