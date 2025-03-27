@@ -1,4 +1,7 @@
-# Endogenous Augmentation for NER
+# Exogenous and Endogenous Augmentation for NER
+### Exogenous Augmentation -> /Exogenous
+
+# Endogenous Augmentation
 
 Welcome to the *Endogenous Augmentation* project! This repository contains code for training and testing a Named Entity Recognition (NER) model with endogenous augmentation techniques. The project includes scripts for training (train.py) and testing (test.py), with a pre-trained model saved in the Models directory.
 
@@ -16,6 +19,27 @@ Welcome to the *Endogenous Augmentation* project! This repository contains code 
 
 ## Overview
 This project implements a training and testing pipeline for an NER model enhanced with endogenous augmentation. The training script (train.py) allows customization of hyperparameters like sample size, regularization strength, and training epochs, while the testing script (test.py) provides an option for quick inference on a smaller sample.
+
+---
+
+## Overall Architecture
+![image](https://github.com/user-attachments/assets/d09047ee-089d-4633-8ab4-844d972c17af)
+
+## E²DA Architectural Flow
+
+### 1. Exogenous Data Augmentation (Text-Level Diversity)
+**LLM-Driven Generation**:
+- Uses ChatGPT-class models to synthesize training data via:
+  - **Instruction Constraints**: Explicit prompts force LLMs to generate text with:
+    - Entities having different syntactic structures than original data
+    - Novel semantic contexts unrelated to anchor samples
+  - **Self-Refinement**: Automated quality control through:
+- **Outcome**: Creates expanded dataset `D` with high diversity (Δ~45% vs baseline)[1][3]
+
+## 2. Endogenous Data Augmentation (Semantic Space Exploration)
+**Intra-Class Semantic Variations**:
+\text{Augmented Feature} = \mathbf{e}i^r + \beta \cdot \mathcal{N}(0, \Sigma{e}^{c}) + \gamma \cdot \mathcal{N}(0, \Sigma_{t}^{c})
+
 
 ---
 
@@ -67,3 +91,7 @@ for this you will need to download the model from the below link and place it in
 #### Command
 bash
 python test.py 
+
+
+### Note
+We have explicitly built exogenous and endogenous methods and obtained the results. In the final code for phase 3, we will optimize for higher accuracy and F1 score while working on a required subset of data in a low-resource setting and tuning hyperparameters. The workflow is as follows: first, we generate data augmentation using the exogenous method, then use both the original and augmented data for the subsequent endogenous processing.
