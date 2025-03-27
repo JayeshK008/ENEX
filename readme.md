@@ -25,20 +25,57 @@ This project implements a training and testing pipeline for an NER model enhance
 ## Overall Architecture
 ![image](https://github.com/user-attachments/assets/d09047ee-089d-4633-8ab4-844d972c17af)
 
-## E²DA Architectural Flow
+# Architectural Flow
 
-### 1. Exogenous Data Augmentation (Text-Level Diversity)
-**LLM-Driven Generation**:
-- Uses ChatGPT-class models to synthesize training data via:
-  - **Instruction Constraints**: Explicit prompts force LLMs to generate text with:
-    - Entities having different syntactic structures than original data
-    - Novel semantic contexts unrelated to anchor samples
-  - **Self-Refinement**: Automated quality control through:
-- **Outcome**: Creates expanded dataset `D` with high diversity (Δ~45% vs baseline)[1][3]
+## 1. Exogenous Data Augmentation (Text-Level Diversity)
+
+### LLM-Driven Generation
+Leverages large language models (e.g., ChatGPT) to synthesize new training samples through:
+
+- **Instruction Constraints**: Explicit prompts requiring LLMs to generate texts with entities that are highly dissimilar to original low-resource data (e.g., varying syntactic structures or semantic contexts).
+- **Self-Refinement**: Automatically verifies generated samples via LLM-based rechecking to filter out context-entity mismatches or labeling errors.
+
+**Outcome**: Expands the original "anchor" dataset into diverse, high-quality synthetic data (D).
+
+---
 
 ## 2. Endogenous Data Augmentation (Semantic Space Exploration)
-**Intra-Class Semantic Variations**:
-\text{Augmented Feature} = \mathbf{e}i^r + \beta \cdot \mathcal{N}(0, \Sigma{e}^{c}) + \gamma \cdot \mathcal{N}(0, \Sigma_{t}^{c})
+
+### Intra-Class Semantic Variations
+Operates in the feature space by:
+
+#### **Directional Feature Perturbation**
+Identifies latent semantic directions via covariance matrices derived from entity mentions and contexts. For a token *i* in class *c*:
+
+```math
+\text{Augmented Feature} = e_i^r + \beta \cdot N(0, \Sigma_e^c) + \gamma \cdot N(0, \Sigma_t^c)
+```
+
+Where:
+- \( \Sigma_e^c \) and \( \Sigma_t^c \) are covariance matrices for entity and context features.
+- \( \beta, \gamma \) control augmentation strength.
+
+#### **Moment Generating Function (MGF)**
+Strengthens augmentation upper bounds by combining entity-context perturbations multiplicatively.
+
+**Outcome**: Enables infinite semantic variations without explicit text generation, mitigating noise.
+
+---
+
+## 3. Training Pipeline
+
+### **Phase 1:** Train on exogenous corpus \( D \) to learn robust initial representations.
+
+### **Phase 2:** Fine-tune on original low-resource data using the combined loss:
+
+```math
+L = L_{base} + \alpha (L_{ENDA-sp} + L_{ENDA-tp})
+```
+
+Where:
+- \( L_{base} \) is the standard NER loss.
+- \( L_{ENDA} \) terms enforce semantic consistency from endogenous augmentations.
+
 
 
 ---
