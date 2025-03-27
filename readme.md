@@ -34,6 +34,7 @@ Leverages large language models (e.g., ChatGPT) to synthesize new training sampl
 
 - **Instruction Constraints**: Explicit prompts requiring LLMs to generate texts with entities that are highly dissimilar to original low-resource data (e.g., varying syntactic structures or semantic contexts).
 - **Self-Refinement**: Automatically verifies generated samples via LLM-based rechecking to filter out context-entity mismatches or labeling errors.
+- **In-Context Learning**: (Novelty)
 
 **Outcome**: Expands the original "anchor" dataset into diverse, high-quality synthetic data (D).
 
