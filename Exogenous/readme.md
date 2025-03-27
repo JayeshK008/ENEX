@@ -37,8 +37,8 @@ To run the code, you'll need the following Python packages:
 ## Installation
 1. Clone this repository:
    ```bash
-   git clone https://github.com/your-username/your-repo-name.git
-   cd your-repo-name
+   git clone https://github.com/JayeshK008/ENEX.git
+   cd ENEX/Exogenous
    ```
 
 2. Install the required dependencies:
