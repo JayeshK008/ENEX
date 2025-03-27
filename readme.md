@@ -132,4 +132,4 @@ python test.py
 
 
 ### Note
-We have explicitly built exogenous and endogenous methods and obtained the results. In the final code for phase 3, we will optimize for higher accuracy and F1 score while working on a required subset of data in a low-resource setting and tuning hyperparameters. The workflow is as follows: first, we generate data augmentation using the exogenous method, then use both the original and augmented data for the subsequent endogenous processing.
+We have explicitly built exogenous and endogenous methods and obtained the results.For Endogenous Results in low resource setting you can visit the Endogenous_exp file. In the final code for phase 3, we will optimize for higher accuracy and F1 score while working on a required subset of data in a low-resource setting and tuning hyperparameters. The workflow is as follows: first, we generate data augmentation using the exogenous method, then use both the original and augmented data for the subsequent endogenous processing.
