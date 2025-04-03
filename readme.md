@@ -94,7 +94,7 @@ To run the code, you'll need the following Python packages:
 1. Clone this repository:
    ```bash
    git clone https://github.com/JayeshK008/ENEX.git
-   cd your-repo-name
+   cd ENEX
    ```
    
 
