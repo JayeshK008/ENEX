@@ -1,6 +1,6 @@
 # Exogenous Augmentation for NER
 
-**Exogenous Augmentation** project! This repository contains code for training and testing a Named Entity Recognition (NER) model with exogenous augmentation techniques. The project includes scripts for training (`train.py`) and testing (`test.py`).
+**Exogenous Augmentation** project! This repository contains code for Exogenous Named Entity Recognition (NER) model. The project includes notebook and script for exogenous augmentation file creation.
 
 ---
 
@@ -18,7 +18,7 @@
 ---
 
 ## Overview
-This project implements a training and testing pipeline for an NER model using XLM-RoBERTa-large, enhanced with exogenous augmentation. The training script (train.py) allows customization of hyperparameters, including sample size (500 selected original samples + augmented samples), learning rate, batch size, and training epochs. The testing script (test.py) evaluates the trained model on 5% of the test dataset, providing an F1 score and classification report for performance analysis.
+This project implements a training and testing pipeline for an NER model using XLM-RoBERTa-large, enhanced with exogenous augmentation. The training script (train.py) allows customization of hyperparameters, including sample size (100 selected original samples + augmented samples), learning rate, batch size, and training epochs. The testing script (test.py) evaluates the trained model on 5% of the test dataset, providing an F1 score and classification report for performance analysis.
 
 ---
 
