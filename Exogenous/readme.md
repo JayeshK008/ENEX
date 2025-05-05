@@ -18,8 +18,7 @@
 ---
 
 ## Overview
-This project implements a training and testing pipeline for an NER model using XLM-RoBERTa-large, enhanced with exogenous augmentation. The training script (train.py) allows customization of hyperparameters, including sample size (100 selected original samples + augmented samples), learning rate, batch size, and training epochs. The testing script (test.py) evaluates the trained model on 5% of the test dataset, providing an F1 score and classification report for performance analysis.
-
+This project focuses on generating an augmented dataset for Named Entity Recognition (NER) using XLM-RoBERTa-large embeddings to support exogenous augmentation strategies. Instead of training or testing a model, the current pipeline creates a combined dataset consisting of 100 selected original samples and their augmented variants. The final output is saved in CoNLL format, making it ready for downstream processing or use in endogenous training pipelines.
 ---
 
 ## Dependencies
@@ -53,43 +52,13 @@ The exogenous_data.py script performs data augmentation on the training set.
 
 #### Command
 ```bash
-python exogenous_data.py --num_augmentations 3
+python exogenous_data.py 
 ```
-### Arguments
-| Argument       | Type  | Default | Description                              |
+### Breif
+| Brief      | Type  | Default | Description                              |
 |---------------|------|---------|------------------------------------------|
-| `--num_augmentations` | int  | 3     | Number of augmented samples to generate per original sample  |
+| `num_augmentations` | int  | 5     | Number of augmented samples to generate per original sample  |
 
-### Training
-The `train.py` script trains the **NER model** with **exogenous augmentation**.  
-You can customize the training process using **command-line arguments**.  
-
-#### Command
-```bash
-python train.py --sample_size 500 --learning_rate 5e-6 --batch_size 4 --epochs 5
-```
-### Arguments
-
-| Argument       | Type  | Default | Description                              |
-|---------------|------|---------|------------------------------------------|
-| `--sample_size` | int  | 500     | Number of original samples used for training  |
-| `--learning rate`      | float | 5e-6    | Learning Rate for Finetuning         |
-| `--batch_size` | int  | 4     | Batch size for training and evaluation      |
-| `--epochs`   | int  | 10       | Training epochs            |
-
-
-### Testing
-The `test.py` script evaluates the trained **NER model** on 5% of the test data and computes the **F1 score**.
-
-#### Command
-```bash
-python test.py --test_sample_size 5
-```
-### Arguments
-
-| Argument       | Type  | Default | Description                              |
-|---------------|------|---------|------------------------------------------|
-| `--test_sample_size` | int  | 5     | % of test samples used to evaluate  |
 
 
 We have introduced In-Context Learning (ICL) data augmentation alongside the original data augmentation technique prescribed in the paper: Exogenous and Endogenous Data Augmentation for Low-Resource Complex Named Entity Recognition (specifically in the Exogenous part).
