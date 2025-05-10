@@ -12,8 +12,10 @@ Welcome to the *Endogenous Augmentation* project! This repository contains code 
 - [Dependencies](#dependencies)
 - [Installation](#installation)
 - [Usage](#usage)
+  - [General](#general)
   - [Training](#training)
   - [Testing](#testing)
+- [Results](#results)
 
 ---
 
@@ -105,31 +107,72 @@ To run the code, you'll need the following Python packages:
     
 ## Usage
 
-### Training
-The train.py script trains the NER model with endogenous augmentation. You can customize the training process using command-line arguments.
+### General
+We evaluate our method on the [MultiCoNER 2022 dataset](https://multiconer.github.io/) across 10 languages, using only 100 training samples per language.
 
-#### Command
-bash
-python train.py --sample_size 100 --alpha 0.01 --max_epochs 500 --patience 8
+## 🌍 Languages Supported
+- English (`En`)
+- Bengali (`Bn`)
+- Hindi (`Hi`)
+- German (`De`)
+- Spanish (`Es`)
+- Korean (`Ko`)
+- Dutch (`Nl`)
+- Russian (`Ru`)
+- Turkish (`Tr`)
+- Chinese (`Zh`)
 
-## Arguments
+---
 
-| Argument       | Type  | Default | Description                              |
-|---------------|------|---------|------------------------------------------|
-| --sample_size | int  | 100     | Number of samples to use for training  |
-| --alpha      | float | 0.01    | Alpha value for regularization         |
-| --max_epochs | int  | 500     | Maximum number of epochs to train      |
-| --patience   | int  | 8       | Patience for early stopping            |
+### Directory Structure
 
-### Testing
-The test.py script tests the train model against the testing data.
-for this you will need to download the model from the below link and place it in Models folder.
-[Model Link](https://drive.google.com/file/d/1vRmGc-VwND0Fce-zNW8PiAYeZKWMNmrJ/view)
-
-#### Command
-```bash
-python test.py 
 ```
 
-### Note
-We have explicitly built exogenous and endogenous methods and obtained the results.For Endogenous Results in low resource setting you can visit the Endogenous_exp file. For checking the results on version 1 of the dataset you can view the Version1/v1.ipynb. The workflow is as follows: first, we generate data augmentation using the exogenous method, then use both the original and augmented data for the subsequent endogenous processing.
+├── Augmented/               # Contains augmented data (exogenous + endogenous) for each language
+├── Multiconer2022/         # Contains raw MultiCoNER 2022 dataset
+├── exogenous/              # Code for generating exogenous augmentations
+├── train.py                # Training script
+├── test.py                 # Evaluation script
+
+```
+
+---
+
+### Training
+To train the NER model with endogenous and optionally exogenous augmentation:
+
+python train.py --lang En --sample_size 100 --woExo False --alpha 0.01 --max_epochs 500 --patience 8
+Arguments:
+--lang: Language code (default: En)
+--sample_size: Number of training samples (default: 100)
+--woExo: Whether to disable exogenous augmentation (default: True)
+--alpha: Regularization coefficient for orthogonality loss
+--max_epochs: Maximum training epochs (default: 500)
+--patience: Early stopping patience (default: 8)
+
+### Testing
+Evaluate a trained model using:
+
+python test.py --modelPath path/to/model.pth --lang En
+Arguments:
+--modelPath: Path to the saved model file
+--lang: Language code (default: En)
+
+
+### Results
+
+**Table 1: NER performance (micro-F1, %) on 10 languages under low-resource (100-sample) setting**
+
+| Method    | En        | Bn        | Hi        | De        | Es        | Ko        | Nl        | Ru        | Tr        | Zh        | Avg       |
+| --------- | --------- | --------- | --------- | --------- | --------- | --------- | --------- | --------- | --------- | --------- | --------- |
+| Gold-only | 29.36     | 14.49     | 18.80     | 37.04     | 36.30     | 12.76     | 38.78     | 23.89     | 24.13     | 14.18     | 24.97     |
+| LwTR      | 48.60     | 20.25     | 29.95     | 48.38     | 44.08     | 35.09     | 43.00     | 39.22     | 30.58     | 27.70     | 36.68     |
+| DAGA      | 16.24     | 5.87      | 10.40     | 32.44     | 27.78     | 19.28     | 15.44     | 11.14     | 16.17     | 10.33     | 16.51     |
+| MELM      | 40.12     | 6.22      | 27.84     | 43.94     | 37.45     | 34.10     | 37.82     | 32.38     | 20.13     | 25.11     | 30.51     |
+| ACLM      | 48.76     | 23.09     | 33.53     | 48.80     | 44.14     | 38.35     | 46.22     | 39.48     | 37.20     | 35.12     | 39.47     |
+| E2DA      | 56.69     | 35.07     | 44.32     | 56.02     | 52.83     | 47.77     | 53.24     | 44.36     | 40.57     | 42.26     | 47.31     |
+| **Ours**  | **66.67** | **41.42** | **57.88** | **61.06** | **61.26** | **51.53** | **62.20** | **62.03** | **50.52** | **50.03** | **56.46** |
+
+Our approach shows significant improvements across all languages and sets a new state-of-the-art in low-resource complex NER.
+
+---

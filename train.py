@@ -1,19 +1,21 @@
 import torch
 import torch.nn as nn
 import numpy as np
-from datasets import load_dataset
+from datasets import load_dataset, Dataset
 from torch.utils.data import DataLoader, Subset
 from transformers import XLMRobertaTokenizerFast, XLMRobertaModel
 import random
-import torch
-import numpy as np
+import os
 from tqdm import tqdm
+from sklearn.metrics import f1_score
 import argparse
 
 # Argument parser for command-line arguments
 def parse_args():
     parser = argparse.ArgumentParser(description="Training script for NER model with endogenous augmentation")
     parser.add_argument('--sample_size', type=int, default=100, help='Number of samples to use for training')
+    parser.add_argument('--woExo',type=bool,default=True,help="Run experiment without exogenous Augmentation Default(True)")
+    parser.add_argument('--lang',type=str,default="En",help='Can Choose from languages En, Bn, Hi, De, Es, Ko, Nl, Ru, Tr, Zh')
     parser.add_argument('--alpha', type=float, default=0.01, help='Alpha value for regularization')
     parser.add_argument('--max_epochs', type=int, default=500, help='Maximum number of epochs to train')
     parser.add_argument('--patience', type=int, default=8, help='Patience for early stopping')
@@ -26,26 +28,92 @@ sample_size = args.sample_size
 alpha = args.alpha
 max_epochs = args.max_epochs
 patience = args.patience
+lang = args.lang
+woExo = args.woExo
+
+
+#labels set
+entity_label_set = ['O','CORP', 'CW', 'GRP', 'LOC', 'PER', 'PROD']
+
+#loading data
+def read_conll_file(file_path):
+    sentences = []
+    ner_tags = []
+    tokens = []
+    tags = []
+
+    with open(file_path, 'r', encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+
+            if not line:
+                if tokens:
+                    sentences.append(tokens)
+                    ner_tags.append(tags)
+                    tokens = []
+                    tags = []
+                continue
+
+            if line.startswith("#"):
+                continue
+
+            parts = line.split()
+            if len(parts) >= 4:
+                token, _, _, tag = parts
+                tokens.append(token)
+                tags.append(tag)
+
+    if tokens:
+        sentences.append(tokens)
+        ner_tags.append(tags)
+
+    return sentences, ner_tags
+
+def load_conll_dataset_from_dir(data_dir):
+    all_sentences = []
+    all_tags = []
+
+    for filename in os.listdir(data_dir):
+        if filename.endswith(".conll"):
+            path = os.path.join(data_dir, filename)
+            sents, tags = read_conll_file(path)
+            all_sentences.extend(sents)
+            all_tags.extend(tags)
+
+    return all_sentences, all_tags
+
+def create_hf_dataset(sentences, tags):
+    data = [{"tokens": s, "ner_tags": t} for s, t in zip(sentences, tags)]
+    return Dataset.from_list(data)
+
+if woExo ==False:
+    train_data_dir = f"Augmented/{lang}"
+else:
+    train_data_dir = f"multiconer2022/{lang}/train"
+
+test_data_dir= f"multiconer2022/{lang}/test"
+val_data_dir= f"multiconer2022/{lang}/val"
+
+sentences, ner_tags = load_conll_dataset_from_dir(train_data_dir)
+train_dataset = create_hf_dataset(sentences, ner_tags)
+#test
+sentences1, ner_tags1 = load_conll_dataset_from_dir(test_data_dir)
+test_dataset = create_hf_dataset(sentences1, ner_tags1)
+#val
+sentences, ner_tags = load_conll_dataset_from_dir(val_data_dir)
+validation_dataset = create_hf_dataset(sentences, ner_tags)
+
 torch.manual_seed(42)
 random.seed(42)
 np.random.seed(42)
-entity_label_set = ['O','Disease', 'SportsManager', 'Software', 'WrittenWork', 'Food', 'Scientist', 'OtherLOC', 'Cleric', 'Medication/Vaccine', 'PublicCorp', 'VisualWork', 'OtherPER', 'Artist', 'Symptom', 'SportsGRP', 'MedicalProcedure', 'Athlete', 'PrivateCorp', 'ORG', 'Politician', 'ArtWork', 'Drink', 'Vehicle', 'MusicalGRP', 'AnatomicalStructure', 'HumanSettlement', 'CarManufacturer', 'Facility', 'AerospaceManufacturer', 'OtherPROD', 'Clothing', 'MusicalWork', 'Station']
-
-dataset = load_dataset('MultiCoNER/multiconer_v2', 'English (EN)')
-train_dataset = dataset['train']
-validation_dataset = dataset['validation']
-test_dataset = dataset['test']
-
 
 train_indices = random.sample(range(len(train_dataset)), sample_size)
 train_subset = Subset(train_dataset, train_indices)
-
 
 tokenizer = XLMRobertaTokenizerFast.from_pretrained('xlm-roberta-large')
 encoder = XLMRobertaModel.from_pretrained('xlm-roberta-large')
 
 span_label_set = ['B', 'I', 'O']
-
 span2id = {label: idx for idx, label in enumerate(span_label_set)}
 entity2id = {label: idx for idx, label in enumerate(entity_label_set)}
 
@@ -108,9 +176,13 @@ def collate_fn(batch):
 
 # DataLoaders
 batch_size = 8
-train_loader = DataLoader(train_subset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
+if woExo==False:
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
+else:
+    train_loader = DataLoader(train_subset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
 validation_loader = DataLoader(validation_dataset, batch_size=batch_size, shuffle=False, collate_fn=collate_fn)
-print("data loaded")
+test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, collate_fn=collate_fn)
+
 # Model Definition
 class E2DAEndogenous(nn.Module):
     def __init__(self, hidden_dim=1024, num_span_labels=len(span_label_set), num_entity_labels=len(entity_label_set)):
@@ -141,7 +213,7 @@ class E2DAEndogenous(nn.Module):
 # Endogenous Augmentation Loss
 def compute_covariance_matrix(features, labels, num_classes):
     batch_size, seq_len, dim = features.size()
-    device = features.device  
+    device = features.device  # Get the device of the input features
     features_flat = features.view(-1, dim)
     labels_flat = labels.view(-1)
     cov_matrices = []
@@ -184,14 +256,17 @@ def orthogonality_loss(H_span, H_type, H_share):
     dot3 = (H_span * H_type).sum(dim=-1).pow(2).mean()
     return dot1 + dot2 + dot3
 
-
-
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model = E2DAEndogenous().to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-5)
- 
-best_train_loss = np.inf  
-epochs_no_improve = 0  
+model.to(device)
+
+
+alpha = 0.01
+max_epochs = 440
+patience = 8
+best_train_loss = np.inf
+epochs_no_improve = 0
 
 for epoch in range(max_epochs):
     model.train()
@@ -207,13 +282,11 @@ for epoch in range(max_epochs):
         optimizer.zero_grad()
         span_logits, type_logits, H_span, H_type, H_share = model(input_ids, attention_mask)
 
-        # Get classification head parameters
         span_weights = model.span_head.weight.detach()
         span_bias = model.span_head.bias.detach()
         type_weights = model.type_head.weight.detach()
         type_bias = model.type_head.bias.detach()
 
-        # Dynamic lambda
         lambda_ = 1.5 * (epoch + 1) / max_epochs
         span_loss = endogenous_loss(span_logits, span_labels, H_span, span_weights, span_bias, lambda_)
         type_loss = endogenous_loss(type_logits, entity_labels, H_type, type_weights, type_bias, lambda_)
@@ -231,7 +304,7 @@ for epoch in range(max_epochs):
     if avg_train_loss < best_train_loss:
         best_train_loss = avg_train_loss
         epochs_no_improve = 0
-        torch.save(model.state_dict(), "Model/best_e2da_endogenous.pth") 
+        torch.save(model.state_dict(), "Model/model.pth")
         print("Model saved!")
     else:
         epochs_no_improve += 1
@@ -242,5 +315,3 @@ for epoch in range(max_epochs):
 
 
 print("Training complete.")
-torch.save(model.state_dict(), "Model/model_endo.pth")
-print(" Final Model saved successfully.")

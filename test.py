@@ -1,40 +1,92 @@
-print("start")
 import torch
 import torch.nn as nn
 import numpy as np
-from datasets import load_dataset
-from torch.utils.data import DataLoader
+from datasets import load_dataset, Dataset
+from torch.utils.data import DataLoader, Subset
 from transformers import XLMRobertaTokenizerFast, XLMRobertaModel
 import random
-import torch
-import numpy as np
+import os
 from tqdm import tqdm
 from sklearn.metrics import f1_score
-print("import completed")
 import argparse
 
+# Argument parser for command-line arguments
 def parse_args():
-    parser = argparse.ArgumentParser(description="Testing script for  endogenous augmentation")
-    parser.add_argument('--sample_test', type=bool, default=False, help='Testing on 20 percent sample for fast inference')
+    parser = argparse.ArgumentParser(description="Training script for NER model with endogenous augmentation")
+    parser.add_argument('--modelPath', type=str, default="NA", help='Path where the model is stored')
+    parser.add_argument('--lang',type=str,default="En",help='Can Choose from languages En, Bn, Hi, De, Es, Ko, Nl, Ru, Tr, Zh')
     return parser.parse_args()
 
 args = parse_args()
 
 # Use parsed arguments
-sample_test = args.sample_test
+modelPath = args.modelPath
+lang = args.lang
 
 
+#labels set
+entity_label_set = ['O','CORP', 'CW', 'GRP', 'LOC', 'PER', 'PROD']
 
-torch.manual_seed(42)
-random.seed(42)
-np.random.seed(42)
+#loading data
+def read_conll_file(file_path):
+    sentences = []
+    ner_tags = []
+    tokens = []
+    tags = []
 
-dataset = load_dataset('MultiCoNER/multiconer_v2', 'English (EN)')
-test_dataset = dataset['test']
+    with open(file_path, 'r', encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+
+            if not line:
+                if tokens:
+                    sentences.append(tokens)
+                    ner_tags.append(tags)
+                    tokens = []
+                    tags = []
+                continue
+
+            if line.startswith("#"):
+                continue
+
+            parts = line.split()
+            if len(parts) >= 4:
+                token, _, _, tag = parts
+                tokens.append(token)
+                tags.append(tag)
+
+    if tokens:
+        sentences.append(tokens)
+        ner_tags.append(tags)
+
+    return sentences, ner_tags
+
+def load_conll_dataset_from_dir(data_dir):
+    all_sentences = []
+    all_tags = []
+
+    for filename in os.listdir(data_dir):
+        if filename.endswith(".conll"):
+            path = os.path.join(data_dir, filename)
+            sents, tags = read_conll_file(path)
+            all_sentences.extend(sents)
+            all_tags.extend(tags)
+
+    return all_sentences, all_tags
+
+def create_hf_dataset(sentences, tags):
+    data = [{"tokens": s, "ner_tags": t} for s, t in zip(sentences, tags)]
+    return Dataset.from_list(data)
+
+
+test_data_dir= f"multiconer2022/{lang}/test"
+
+#test
+sentences1, ner_tags1 = load_conll_dataset_from_dir(test_data_dir)
+test_dataset = create_hf_dataset(sentences1, ner_tags1)
 
 tokenizer = XLMRobertaTokenizerFast.from_pretrained('xlm-roberta-large')
 encoder = XLMRobertaModel.from_pretrained('xlm-roberta-large')
-entity_label_set = ['O','Disease', 'SportsManager', 'Software', 'WrittenWork', 'Food', 'Scientist', 'OtherLOC', 'Cleric', 'Medication/Vaccine', 'PublicCorp', 'VisualWork', 'OtherPER', 'Artist', 'Symptom', 'SportsGRP', 'MedicalProcedure', 'Athlete', 'PrivateCorp', 'ORG', 'Politician', 'ArtWork', 'Drink', 'Vehicle', 'MusicalGRP', 'AnatomicalStructure', 'HumanSettlement', 'CarManufacturer', 'Facility', 'AerospaceManufacturer', 'OtherPROD', 'Clothing', 'MusicalWork', 'Station']
 
 span_label_set = ['B', 'I', 'O']
 span2id = {label: idx for idx, label in enumerate(span_label_set)}
@@ -100,7 +152,8 @@ def collate_fn(batch):
 # DataLoaders
 batch_size = 8
 test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, collate_fn=collate_fn)
-print("loader ready")
+
+# Model Definition
 class E2DAEndogenous(nn.Module):
     def __init__(self, hidden_dim=1024, num_span_labels=len(span_label_set), num_entity_labels=len(entity_label_set)):
         super(E2DAEndogenous, self).__init__()
@@ -126,72 +179,86 @@ class E2DAEndogenous(nn.Module):
         span_logits = self.span_head(self.dropout(H_sp))
         type_logits = self.type_head(self.dropout(H_tp))
         return span_logits, type_logits, H_span, H_type, H_share
+
+# Endogenous Augmentation Loss
+def compute_covariance_matrix(features, labels, num_classes):
+    batch_size, seq_len, dim = features.size()
+    device = features.device  # Get the device of the input features
+    features_flat = features.view(-1, dim)
+    labels_flat = labels.view(-1)
+    cov_matrices = []
+    for c in range(num_classes):
+        class_features = features_flat[labels_flat == c]
+        if class_features.numel() > 0 and class_features.size(0) > 1:
+            cov = torch.cov(class_features.T)
+            cov_matrices.append(cov + torch.eye(dim, device=device) * 1e-6)
+        else:
+            cov_matrices.append(torch.eye(dim, device=device) * 1e-6)
+    return torch.stack(cov_matrices)
+
+def endogenous_loss(logits, labels, features, head_weights, head_bias, lambda_):
+    batch_size, seq_len, num_classes = logits.size()
+    cov_matrices = compute_covariance_matrix(features, labels, num_classes)
+
+    loss = 0
+    valid_tokens = 0
+    for i in range(batch_size):
+        for j in range(seq_len):
+            if labels[i, j] != -100:
+                c_i = labels[i, j]
+                h_i = features[i, j]
+                log_sum_exp = 0
+                for c_j in range(num_classes):
+                    if c_j != c_i:
+                        delta_w = head_weights[c_j] - head_weights[c_i]
+                        delta_b = head_bias[c_j] - head_bias[c_i]
+                        mean_term = delta_w @ h_i + delta_b
+                        var_term = (lambda_ / 2) * delta_w @ cov_matrices[c_i] @ delta_w
+                        log_sum_exp += torch.exp(mean_term + var_term)
+                loss += torch.log(1 + log_sum_exp)
+                valid_tokens += 1
+    return loss / valid_tokens if valid_tokens > 0 else torch.tensor(0.0, device=logits.device)
+
+# Orthogonality Loss
+def orthogonality_loss(H_span, H_type, H_share):
+    dot1 = (H_span * H_share).sum(dim=-1).pow(2).mean()
+    dot2 = (H_type * H_share).sum(dim=-1).pow(2).mean()
+    dot3 = (H_span * H_type).sum(dim=-1).pow(2).mean()
+    return dot1 + dot2 + dot3
+
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model = E2DAEndogenous().to(device)
-model.load_state_dict(torch.load("Model/model_endo.pth"))
+optimizer = torch.optim.Adam(model.parameters(), lr=1e-5)
+model.load_state_dict(torch.load(modelPath))
 model.to(device)
 model.eval()
-from torch.utils.data import random_split
-
-train_size = int(0.80 * len(test_dataset))
-val_size = len(test_dataset) - train_size
-
-train_test_dataset, val_test_dataset = random_split(test_dataset, [train_size, val_size])
-
-train_test_loader = DataLoader(train_test_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
-val_test_loader = DataLoader(val_test_dataset, batch_size=batch_size, shuffle=False, collate_fn=collate_fn)
-
-model.eval()
 test_preds, test_labels = [],[]
-if sample_test==True:
-    test_loader_tqdm = tqdm(val_test_loader, desc="Testing", leave=False)
 
-    with torch.no_grad():
-        for batch in test_loader_tqdm:
-            input_ids = batch['input_ids'].to(device)
-            attention_mask = batch['attention_mask'].to(device)
-            span_labels = batch['span_labels'].to(device)
-            entity_labels = batch['entity_labels'].to(device)
+test_loader_tqdm = tqdm(test_loader, desc="Testing", leave=False)
 
-            span_logits, type_logits, _, _, _ = model(input_ids, attention_mask)
-            span_preds = torch.argmax(span_logits, dim=-1)
-            type_preds = torch.argmax(type_logits, dim=-1)
+with torch.no_grad():
+    for batch in test_loader_tqdm:
+        input_ids = batch['input_ids'].to(device)
+        attention_mask = batch['attention_mask'].to(device)
+        span_labels = batch['span_labels'].to(device)
+        entity_labels = batch['entity_labels'].to(device)
 
-            for i in range(span_preds.size(0)):
-                for j in range(span_preds.size(1)):
-                    if span_labels[i, j] != -100:
-                        pred_label = f"{span_label_set[span_preds[i, j]]}-{entity_label_set[type_preds[i, j]]}" if span_preds[i, j] != 2 else "O"
-                        true_label = f"{span_label_set[span_labels[i, j]]}-{entity_label_set[entity_labels[i, j]]}" if span_labels[i, j] != 2 else "O"
+        span_logits, type_logits, _, _, _ = model(input_ids, attention_mask)
+        span_preds = torch.argmax(span_logits, dim=-1)
+        type_preds = torch.argmax(type_logits, dim=-1)
 
-                        if pred_label != "O" and true_label != "O":
-                            test_preds.append(pred_label)
-                            test_labels.append(true_label)
+        for i in range(span_preds.size(0)):
+            for j in range(span_preds.size(1)):
+                if span_labels[i, j] != -100:
+                    pred_label = f"{span_label_set[span_preds[i, j]]}-{entity_label_set[type_preds[i, j]]}" if span_preds[i, j] != 2 else "O"
+                    true_label = f"{span_label_set[span_labels[i, j]]}-{entity_label_set[entity_labels[i, j]]}" if span_labels[i, j] != 2 else "O"
 
-    micro_f1 = f1_score(test_labels, test_preds, average='micro')
-    print(f"Test Micro-F1 (sample): {micro_f1:.4f}")
-else:
-    test_loader_tqdm = tqdm(test_loader, desc="Testing", leave=False)
+                    # Only append non-"O" labels to the lists
+                    if pred_label != "O" and true_label != "O":
+                        test_preds.append(pred_label)
+                        test_labels.append(true_label)
 
-    with torch.no_grad():
-        for batch in test_loader_tqdm:
-            input_ids = batch['input_ids'].to(device)
-            attention_mask = batch['attention_mask'].to(device)
-            span_labels = batch['span_labels'].to(device)
-            entity_labels = batch['entity_labels'].to(device)
+# Compute Micro-F1 Score for non-"O" predictions
+micro_f1 = f1_score(test_labels, test_preds, average='micro')
+print(f"Test Micro-F1 (non-'O'): {micro_f1:.4f}")
 
-            span_logits, type_logits, _, _, _ = model(input_ids, attention_mask)
-            span_preds = torch.argmax(span_logits, dim=-1)
-            type_preds = torch.argmax(type_logits, dim=-1)
-
-            for i in range(span_preds.size(0)):
-                for j in range(span_preds.size(1)):
-                    if span_labels[i, j] != -100:
-                        pred_label = f"{span_label_set[span_preds[i, j]]}-{entity_label_set[type_preds[i, j]]}" if span_preds[i, j] != 2 else "O"
-                        true_label = f"{span_label_set[span_labels[i, j]]}-{entity_label_set[entity_labels[i, j]]}" if span_labels[i, j] != 2 else "O"
-
-                        if pred_label != "O" and true_label != "O":
-                            test_preds.append(pred_label)
-                            test_labels.append(true_label)
-
-    micro_f1 = f1_score(test_labels, test_preds, average='micro')
-    print(f"Test Micro-F1 (sample): {micro_f1:.4f}")
