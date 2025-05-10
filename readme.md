@@ -129,6 +129,7 @@ We evaluate our method on the [MultiCoNER 2022 dataset](https://multiconer.githu
 ```
 
 ├── Augmented/               # Contains augmented data (exogenous + endogenous) for each language
+├── Model/                  # The user should create this Directory for saving the models
 ├── Multiconer2022/         # Contains raw MultiCoNER 2022 dataset
 ├── exogenous/              # Code for generating exogenous augmentations
 ├── train.py                # Training script
